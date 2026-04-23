@@ -1,0 +1,63 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Install Playwright Chromium
+        run: |
+          playwright install chromium
+
+      - name: Get Chromium path
+        shell: pwsh
+        run: |
+          $path = python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path); p.stop()"
+          $chromiumDir = Split-Path $path -Parent
+          $playwrightRoot = Split-Path (Split-Path $chromiumDir -Parent) -Parent
+          echo "PW_BROWSERS_PATH=$playwrightRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "Found chromium at: $path"
+          echo "Browsers root: $playwrightRoot"
+
+      - name: Build with PyInstaller
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --onedir --windowed `
+            --name "JD-BatchImageReplace" `
+            --add-data "$env:PW_BROWSERS_PATH;ms-playwright" `
+            --collect-all playwright `
+            --collect-all webview `
+            --hidden-import pandas `
+            --hidden-import openpyxl `
+            main.py
+
+      - name: Compress output
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/JD-BatchImageReplace" -DestinationPath "dist/京东批量换图-Windows.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 京东批量换图-Windows
+          path: dist/京东批量换图-Windows.zip
+          retention-days: 30

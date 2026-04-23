@@ -1,0 +1,32 @@
+# 浏览器数据
+.browser_data/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+venv/
+.venv/
+
+# 打包产物
+build/
+dist/
+*.spec
+
+# 用户数据（业务文件）
+*.xlsx
+*.xls
+燕京*/
+*主图/
+
+# 错误截图
+error_*.png
+
+# IDE
+.vscode/
+.idea/
