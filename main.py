@@ -1,7 +1,7 @@
 """
 京准通 - 批量换图自动化脚本
 
-双击 批量换图.command 启动 GUI；或命令行:
+双击 批量换图.command 启动 GUI，或命令行:
   python main.py --excel data.xlsx --sku-col SKU --image-dir /path/to/images
 """
 
