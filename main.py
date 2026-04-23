@@ -1,5 +1,5 @@
 """
-京东商智达 - 批量换图自动化脚本
+京准通 - 批量换图自动化脚本
 
 双击 批量换图.command 启动 GUI；或命令行:
   python main.py --excel data.xlsx --sku-col SKU --image-dir /path/to/images
@@ -285,7 +285,7 @@ def run_batch(excel_path: str, sku_col: str, image_dir: str, scenarios: list[str
     wait(2)
 
     if "passport" in page.url or "login" in page.url:
-        log_fn("⚠ 请在浏览器中手动登录京东商智达")
+        log_fn("⚠ 请在浏览器中手动登录京准通")
         if wait_for_login_fn:
             wait_for_login_fn()
         else:
@@ -396,7 +396,7 @@ HTML = """
 </head>
 <body>
 
-<h1>京东商智达 - 批量换图工具</h1>
+<h1>京准通 - 批量换图工具</h1>
 
 <div class="form-row">
   <label>Excel 文件</label>
@@ -550,7 +550,7 @@ def run_gui():
     window = None
     api = Api(lambda: window)
     window = webview.create_window(
-        "京东商智达 - 批量换图工具", html=HTML,
+        "京准通 - 批量换图工具", html=HTML,
         width=780, height=680, resizable=False,
         js_api=api
     )
@@ -560,7 +560,7 @@ def run_gui():
 # ========== CLI ==========
 
 def main_cli():
-    parser = argparse.ArgumentParser(description="京东商智达批量换图")
+    parser = argparse.ArgumentParser(description="京准通批量换图")
     parser.add_argument("--excel", required=True, help="Excel 文件路径")
     parser.add_argument("--sku-col", default="SKU", help="SKU 所在列名（默认: SKU）")
     parser.add_argument("--image-dir", required=True, help="图片文件夹路径")
