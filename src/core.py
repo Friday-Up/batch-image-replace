@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
-from .config import BASE_DIR, SCENARIOS, STEP_DELAY, USER_DATA_DIR
+from .config import BASE_DIR, SCENARIOS, STEP_DELAY, USER_DATA_DIR, get_chromium_path
 
 
 def wait(seconds: float = STEP_DELAY):
@@ -177,8 +177,7 @@ def process_sku_smart(page, sku: str, image_path: str, url: str):
 
 def _ensure_browser(log_fn):
     """确保浏览器启动并返回 (browser, page)"""
-    with sync_playwright() as p:
-        chromium_path = p.chromium.executable_path
+    chromium_path = get_chromium_path()
 
     debug_port = 9222
     try:
