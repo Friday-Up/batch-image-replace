@@ -59,6 +59,14 @@ HTML = """
   .btn-secondary:hover { background: #fef0ef; }
   .btn-secondary:disabled { color: #ccc; border-color: #ddd; cursor: not-allowed; }
 
+  .btn-danger {
+    background: #fff; color: #e74c3c; border: 1px solid #e74c3c;
+    height: 40px; padding: 0 20px; font-size: 14px; border-radius: 6px;
+    cursor: pointer; margin-left: 12px; transition: all 0.2s;
+  }
+  .btn-danger:hover { background: #e74c3c; color: #fff; }
+  .btn-danger:disabled { color: #ccc; border-color: #ddd; cursor: not-allowed; background: #fff; }
+
   .actions { margin-top: 20px; display: flex; align-items: center; }
 
   .log-label { font-size: 13px; color: #888; margin-top: 20px; margin-bottom: 6px; }
@@ -112,6 +120,7 @@ HTML = """
 
 <div class="actions">
   <button class="btn-primary" id="startBtn" onclick="startRun()">开始执行</button>
+  <button class="btn-danger" id="stopBtn" onclick="stopRun()" style="display:none;">停止执行</button>
   <button class="btn-secondary" id="loginBtn" onclick="continueAfterLogin()" disabled>登录完成，继续执行</button>
 </div>
 
@@ -151,8 +160,17 @@ HTML = """
     if (!imageDir) { alert('请选择图片文件夹'); return; }
     if (scenarios.length === 0) { alert('请至少选择一个执行入口'); return; }
     document.getElementById('startBtn').disabled = true;
+    document.getElementById('stopBtn').style.display = 'inline-block';
+    document.getElementById('stopBtn').disabled = false;
     document.getElementById('log').innerHTML = '';
     await pywebview.api.start_run(excel, skuCol, imageDir, scenarios);
+  }
+
+  async function stopRun() {
+    if (!confirm('确定要停止执行吗？当前 SKU 处理完会立即中断。')) return;
+    document.getElementById('stopBtn').disabled = true;
+    appendLog('⚠ 正在请求停止 ...');
+    await pywebview.api.stop_run();
   }
 
   async function continueAfterLogin() {
@@ -169,6 +187,16 @@ class Api:
     def __init__(self, window_ref):
         self._window_ref = window_ref
         self._login_event = threading.Event()
+        self._stop_event = threading.Event()
+
+    def _reset_buttons(self):
+        win = self._window_ref()
+        if win:
+            win.evaluate_js(
+                'document.getElementById("startBtn").disabled = false;'
+                'document.getElementById("stopBtn").style.display = "none";'
+                'document.getElementById("stopBtn").disabled = false;'
+            )
 
     def _log(self, msg):
         win = self._window_ref()
@@ -196,6 +224,8 @@ class Api:
         return result[0] if result else None
 
     def start_run(self, excel, sku_col, image_dir, scenarios):
+        self._stop_event.clear()
+
         def _task():
             try:
                 def login_wait():
@@ -206,19 +236,20 @@ class Api:
                     self._login_event.clear()
                     self._login_event.wait()
 
-                result = run_batch(excel, sku_col, image_dir, scenarios,
-                                   log_fn=self._log, wait_for_login_fn=login_wait)
-                if result and result["status"] == "done":
-                    win = self._window_ref()
-                    if win:
-                        win.evaluate_js('document.getElementById("startBtn").disabled = false')
+                run_batch(excel, sku_col, image_dir, scenarios,
+                          log_fn=self._log, wait_for_login_fn=login_wait,
+                          stop_event=self._stop_event)
             except Exception as e:
                 self._log(f"错误: {e}")
-                win = self._window_ref()
-                if win:
-                    win.evaluate_js('document.getElementById("startBtn").disabled = false')
+            finally:
+                self._reset_buttons()
 
         threading.Thread(target=_task, daemon=True).start()
+
+    def stop_run(self):
+        self._stop_event.set()
+        # 万一线程正卡在登录等待，也一并放行让它退出
+        self._login_event.set()
 
     def continue_after_login(self):
         self._login_event.set()

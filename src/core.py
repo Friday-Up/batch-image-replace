@@ -113,8 +113,132 @@ def _close_modal(page):
         pass
 
 
+def _get_edit_buttons(page):
+    """获取当前页所有「编辑」按钮 locator，返回 (locator, count)"""
+    locator = page.get_by_role("button", name="编辑")
+    cnt = locator.count()
+    if cnt == 0:
+        locator = page.locator('table').get_by_text("编辑", exact=True)
+        cnt = locator.count()
+    return locator, cnt
+
+
+def _set_page_size(page, size: int = 100) -> bool:
+    """尝试把分页大小调到 size。成功 True，找不到选择器返回 False。
+
+    京准通真实 DOM（已实测）：
+      <span class="jad-dropdown jad-pagination-popper-pageSize">
+        <button>10条/页 ▼</button>
+        <div class="jad-dropdown-popper" style="display:none">
+          <div class="jad-dropdown-item jad-pagination-popper-pageSize-item ...selected">10 条</div>
+          <div class="jad-dropdown-item jad-pagination-popper-pageSize-item">100 条</div>
+        </div>
+      </span>
+    选项文本是 "N 条"（中间有空格），不是 "N条/页"。
+    """
+    try:
+        trigger = page.locator('.jad-pagination-popper-pageSize button').first
+        if not trigger.is_visible(timeout=1500):
+            return False
+
+        # 已经是目标 size 就不用切（trigger 文本是 "100条/页"）
+        try:
+            if f"{size}条/页" in (trigger.text_content() or ""):
+                return True
+        except Exception:
+            pass
+
+        trigger.click(timeout=2000)
+        wait(0.6)
+
+        # 选项文本形如 "100 条"（数字前后有空格/换行）。用正则严格匹配避免 10/100 混淆。
+        import re
+        target_re = re.compile(rf"^\s*{size}\s*条\s*$")
+        items = page.locator('.jad-pagination-popper-pageSize-item')
+        n = items.count()
+        clicked = False
+        for i in range(n):
+            try:
+                txt = (items.nth(i).text_content() or "").strip()
+                if target_re.match(txt):
+                    items.nth(i).click(timeout=2000)
+                    clicked = True
+                    break
+            except Exception:
+                continue
+        if not clicked:
+            # 关闭下拉再返回 False
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+            return False
+        # 等数据真正刷新：trigger 文本应该变成 "{size}条/页"
+        for _ in range(8):
+            wait(0.5)
+            try:
+                if f"{size}条/页" in (trigger.text_content() or ""):
+                    break
+            except Exception:
+                continue
+        wait(1.5)  # 给表格数据一点重新渲染时间
+        return True
+    except Exception:
+        return False
+
+
+def _go_next_page(page) -> bool:
+    """尝试翻到下一页。成功 True；已是最后一页或找不到按钮返回 False。
+
+    京准通真实 DOM（已实测）：
+      <button title="下一页" class="jad-pagination-button">...</button>             # 可点
+      <button title="下一页" disabled class="jad-pagination-button disabled">...    # 末页
+    """
+    try:
+        btn = page.locator('button[title="下一页"]').first
+        if not btn.is_visible(timeout=1000):
+            return False
+        # 检查是否禁用
+        try:
+            cls = btn.get_attribute("class") or ""
+            disabled_attr = btn.get_attribute("disabled")
+            if "disabled" in cls or disabled_attr is not None:
+                return False
+        except Exception:
+            pass
+        btn.click(timeout=2000)
+        wait(2.5)
+        return True
+    except Exception:
+        return False
+
+
+def _process_smart_row(page, edit_btn, image_path: str):
+    """处理智能化的单行：点编辑 → 上传 → 确认。失败抛异常。"""
+    edit_btn.click()
+    wait(2)
+
+    upload_btn = page.locator('.jad-modal-slide button, .jad-modal-slide span').filter(has_text="上传图片").first
+    with page.expect_file_chooser() as fc_info:
+        upload_btn.click(timeout=10000)
+    fc_info.value.set_files(image_path)
+    wait(3)
+
+    error_modal = page.locator('.upload-error-modal')
+    if error_modal.is_visible():
+        error_modal.locator('button').first.click()
+        wait(1)
+        raise Exception("图片上传失败，请检查图片格式和尺寸")
+
+    confirm = page.locator('.jad-modal-slide button', has_text="确认").or_(
+        page.locator('.jad-modal-slide button', has_text="确定")
+    ).first
+    confirm.click(timeout=10000)
+    wait(2)
+
+
 def process_sku_smart(page, sku: str, image_path: str, url: str):
-    """智能化入口：搜索 SKU ID → 对每一行点击编辑 → 抽屉中上传图片 → 确认"""
+    """智能化入口：搜索 SKU ID → 翻页处理所有行 → 抽屉中上传图片 → 确认"""
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
     wait(2)
 
@@ -132,47 +256,46 @@ def process_sku_smart(page, sku: str, image_path: str, url: str):
     search_input.press("Enter")
     wait(3)
 
-    edit_buttons = page.get_by_role("button", name="编辑")
-    count = edit_buttons.count()
-    if count == 0:
-        edit_buttons = page.locator('table').get_by_text("编辑", exact=True)
-        count = edit_buttons.count()
-    if count == 0:
+    # 尝试把分页调到 100/页（失败回退 50/页，再失败保持默认）
+    if not _set_page_size(page, 100):
+        _set_page_size(page, 50)
+    wait(1.5)  # 切完 size 给表格再缓一会儿，避免立刻读到 0 行
+
+    _, first_count = _get_edit_buttons(page)
+    if first_count == 0:
         raise Exception("搜索无结果，跳过")
 
+    total = 0
     success_n = 0
     last_err = None
-    for i in range(count):
-        try:
-            edit_buttons.nth(i).click()
-            wait(2)
+    page_no = 1
 
-            upload_btn = page.locator('.jad-modal-slide button, .jad-modal-slide span').filter(has_text="上传图片").first
-            with page.expect_file_chooser() as fc_info:
-                upload_btn.click(timeout=10000)
-            fc_info.value.set_files(image_path)
-            wait(3)
+    while True:
+        edit_buttons, count = _get_edit_buttons(page)
+        if count == 0:
+            break
 
-            error_modal = page.locator('.upload-error-modal')
-            if error_modal.is_visible():
-                error_modal.locator('button').first.click()
-                wait(1)
-                raise Exception("图片上传失败，请检查图片格式和尺寸")
+        for i in range(count):
+            total += 1
+            try:
+                _process_smart_row(page, edit_buttons.nth(i), image_path)
+                success_n += 1
+            except Exception as e:
+                last_err = str(e).split("\nCall log:")[0]
+                _close_modal(page)
 
-            confirm = page.locator('.jad-modal-slide button', has_text="确认").or_(
-                page.locator('.jad-modal-slide button', has_text="确定")
-            ).first
-            confirm.click(timeout=10000)
-            wait(2)
-            success_n += 1
-        except Exception as e:
-            last_err = str(e).split("\nCall log:")[0]
-            _close_modal(page)
+        # 处理完当前页 → 尝试翻下一页
+        if not _go_next_page(page):
+            break
+        page_no += 1
+        wait(1)
 
+    if total == 0:
+        raise Exception("搜索无结果，跳过")
     if success_n == 0:
         raise Exception(last_err or "全部行处理失败")
-    if success_n < count:
-        raise Exception(f"部分成功 {success_n}/{count}: {last_err}")
+    if success_n < total:
+        raise Exception(f"部分成功 {success_n}/{total}（共 {page_no} 页）: {last_err}")
 
 
 def _ensure_browser(log_fn):
@@ -206,13 +329,19 @@ def _ensure_browser(log_fn):
 
 
 def run_batch(excel_path: str, sku_col: str, image_dir: str, scenarios: list[str],
-              log_fn=print, wait_for_login_fn=None):
-    """执行批量换图。scenarios: ["keyword", "crowd", "smart"] 的子集"""
+              log_fn=print, wait_for_login_fn=None, stop_event=None):
+    """执行批量换图。scenarios: ["keyword", "crowd", "smart"] 的子集
+
+    stop_event: 可选的 threading.Event；被 set 后在下一次 SKU 边界处中断并保存进度。
+    """
     if not scenarios:
         raise ValueError("至少需要选择一个入口")
     for key in scenarios:
         if key not in SCENARIOS:
             raise ValueError(f"未知入口: {key}")
+
+    def _is_stopped():
+        return stop_event is not None and stop_event.is_set()
 
     df, records = load_input(excel_path, sku_col, image_dir, scenarios)
 
@@ -250,11 +379,19 @@ def run_batch(excel_path: str, sku_col: str, image_dir: str, scenarios: list[str
     total = 0
     success = 0
     failed = []
+    stopped = False
     for key in scenarios:
+        if _is_stopped():
+            stopped = True
+            break
         scn = SCENARIOS[key]
         log_fn(f"\n========== 入口: {scn['label']} ==========")
         handler = process_sku_smart if key == "smart" else process_sku_batch
         for i, record in enumerate(records, 1):
+            if _is_stopped():
+                stopped = True
+                log_fn("⚠ 已收到停止信号，正在中断 ...")
+                break
             total += 1
             idx = record["row_idx"]
             sku = record["sku"]
@@ -269,11 +406,20 @@ def run_batch(excel_path: str, sku_col: str, image_dir: str, scenarios: list[str
                 log_fn(f"  ✗ {scn['label']}失败: {err_msg}")
                 failed.append(f"{scn['label']}:{sku}")
                 df.at[idx, scn["remark_col"]] = f"失败: {err_msg}"
+        if stopped:
+            break
 
-    browser.close()
+    try:
+        browser.close()
+    except Exception:
+        pass
     df.to_excel(excel_path, index=False)
     log_fn(f"\n备注已写回 Excel")
-    log_fn(f"处理完成: 成功 {success}/{total}")
+    status = "stopped" if stopped else "done"
+    if stopped:
+        log_fn(f"已停止: 成功 {success}/{total}")
+    else:
+        log_fn(f"处理完成: 成功 {success}/{total}")
     if failed:
         log_fn(f"失败列表: {', '.join(failed)}")
-    return {"status": "done", "success": success, "total": total, "failed": failed}
+    return {"status": status, "success": success, "total": total, "failed": failed}
