@@ -10,16 +10,6 @@ USER_DATA_DIR = Path(os.path.expanduser("~")) / ".jzt_browser_data"
 STEP_DELAY = 1.5
 
 
-def _find_in_patterns(patterns):
-    for pattern in patterns:
-        matches = glob.glob(str(pattern))
-        if matches:
-            exe = Path(matches[0])
-            if exe.exists():
-                return str(exe)
-    return None
-
-
 def get_chromium_path():
     """获取 Chromium 可执行文件路径，支持 PyInstaller 打包环境"""
     # 1. 先尝试 Playwright 自带的路径（源码运行时有效）
@@ -32,25 +22,23 @@ def get_chromium_path():
     except Exception:
         pass
 
-    # 2. PyInstaller 打包环境：从 _MEIPASS 查找
+    # 2. PyInstaller 打包环境：_internal 目录下查找
+    search_roots = []
     if hasattr(sys, "_MEIPASS"):
-        meipass = Path(sys._MEIPASS)
-        result = _find_in_patterns([
-            meipass / "ms-playwright" / "chromium-*" / "chrome-win" / "chrome.exe",
-            meipass / "ms-playwright" / "chromium-*" / "chrome.exe",
-            meipass / "ms-playwright" / "chromium" / "chrome-win" / "chrome.exe",
-        ])
-        if result:
-            return result
+        search_roots.append(Path(sys._MEIPASS))
+    search_roots.append(BASE_DIR)
 
-    # 3. 也尝试 BASE_DIR（项目根目录）
-    result = _find_in_patterns([
-        BASE_DIR / "ms-playwright" / "chromium-*" / "chrome-win" / "chrome.exe",
-        BASE_DIR / "ms-playwright" / "chromium-*" / "chrome.exe",
-        BASE_DIR / "ms-playwright" / "chromium" / "chrome-win" / "chrome.exe",
-    ])
-    if result:
-        return result
+    for root in search_roots:
+        # 递归查找 chrome.exe
+        for pattern in [
+            root / "ms-playwright" / "chromium-*" / "chrome-win" / "chrome.exe",
+            root / "ms-playwright" / "chromium-*" / "chrome.exe",
+            root / "**" / "chrome.exe",
+        ]:
+            matches = glob.glob(str(pattern), recursive=("**" in str(pattern)))
+            for match in matches:
+                if Path(match).exists():
+                    return str(Path(match).resolve())
 
     raise FileNotFoundError(
         "找不到 Chromium 可执行文件，请确认 Playwright 浏览器已正确打包。"

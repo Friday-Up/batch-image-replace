@@ -28,14 +28,13 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright Chromium to local dir
         run: |
+          $env:PLAYWRIGHT_BROWSERS_PATH = "0"
           playwright install chromium
 
       - name: Build with PyInstaller
         shell: pwsh
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: 0
         run: |
           pyinstaller --noconfirm --onedir --windowed `
             --name "JD-BatchImageReplace" `
@@ -48,23 +47,11 @@ jobs:
             --hidden-import src.gui `
             main.py
 
-      - name: Copy browsers to output
+      - name: Verify output structure
         shell: pwsh
         run: |
-          $src = python -c "import os, playwright; print(os.path.join(os.path.dirname(playwright.__file__), '.driver'))"
-          $dst = "dist/JD-BatchImageReplace/_internal/playwright/.driver"
-          if (Test-Path $src) {
-            Copy-Item -Path $src -Destination $dst -Recurse -Force
-            Write-Host "Copied .driver from $src to $dst"
-          }
-          $browserSrc = python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); path=p.chromium.executable_path; p.stop(); print(path)"
-          $browserDir = Split-Path $browserSrc -Parent
-          $browserRoot = Split-Path (Split-Path $browserDir -Parent) -Parent
-          $browserDst = "dist/JD-BatchImageReplace/_internal/ms-playwright"
-          if (Test-Path $browserRoot) {
-            Copy-Item -Path $browserRoot -Destination $browserDst -Recurse -Force
-            Write-Host "Copied browsers from $browserRoot to $browserDst"
-          }
+          Get-ChildItem -Path "dist/JD-BatchImageReplace/_internal" -Recurse -Filter "chrome.exe" | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+          Get-ChildItem -Path "dist/JD-BatchImageReplace/_internal" -Recurse -Filter "ms-playwright" | ForEach-Object { Write-Host "Found dir: $($_.FullName)" }
 
       - name: Compress output
         shell: pwsh
