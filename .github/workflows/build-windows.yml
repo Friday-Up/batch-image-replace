@@ -52,6 +52,9 @@ jobs:
             --collect-all webview `
             --hidden-import pandas `
             --hidden-import openpyxl `
+            --hidden-import src.config `
+            --hidden-import src.core `
+            --hidden-import src.gui `
             main.py
 
       - name: Compress output
