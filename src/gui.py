@@ -69,12 +69,27 @@ HTML = """
 
   .actions { margin-top: 20px; display: flex; align-items: center; }
 
-  .log-label { font-size: 13px; color: #888; margin-top: 20px; margin-bottom: 6px; }
+  .log-label {
+    font-size: 13px; color: #888; margin-top: 20px; margin-bottom: 6px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .copy-btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; font-size: 12px; color: #888; background: transparent;
+    border: 1px solid transparent; border-radius: 4px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .copy-btn:hover { color: #e74c3c; border-color: #e74c3c; background: #fef0ef; }
+  .copy-btn:active { background: #fde2df; }
+  .copy-btn svg { width: 13px; height: 13px; }
+  .copy-btn.copied { color: #4ec9b0; border-color: #4ec9b0; background: #f0faf7; }
+
   #log {
     width: 100%; height: 220px; background: #1e1e1e; color: #d4d4d4;
     border-radius: 8px; padding: 12px; font-family: "Menlo", "Consolas", monospace;
     font-size: 12px; line-height: 1.6; overflow-y: auto; white-space: pre-wrap;
     word-break: break-all;
+    -webkit-user-select: text; user-select: text; cursor: text;
   }
   #log .success { color: #4ec9b0; }
   #log .error { color: #f44747; }
@@ -124,7 +139,16 @@ HTML = """
   <button class="btn-secondary" id="loginBtn" onclick="continueAfterLogin()" disabled>登录完成，继续执行</button>
 </div>
 
-<div class="log-label">执行日志</div>
+<div class="log-label">
+  <span>执行日志</span>
+  <button class="copy-btn" id="copyLogBtn" onclick="copyLog()" title="复制全部日志">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+      <rect x="4" y="4" width="9" height="10" rx="1.5"/>
+      <path d="M3 11V3a1 1 0 0 1 1-1h7"/>
+    </svg>
+    <span id="copyLogText">复制</span>
+  </button>
+</div>
 <div id="log"></div>
 
 <script>
@@ -176,6 +200,54 @@ HTML = """
   async function continueAfterLogin() {
     document.getElementById('loginBtn').disabled = true;
     await pywebview.api.continue_after_login();
+  }
+
+  async function copyLog() {
+    const logEl = document.getElementById('log');
+    // 用 innerText 拿带换行的纯文本（不含 HTML 标签）
+    const text = logEl.innerText || logEl.textContent || '';
+    if (!text.trim()) return;
+
+    let ok = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      }
+    } catch (e) {
+      ok = false;
+    }
+    if (!ok) {
+      // 兜底：通过 textarea + execCommand 复制（适配老环境/pywebview）
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch (e) {
+        ok = false;
+      }
+    }
+    if (!ok) {
+      // 终极兜底：交给 Python 写剪贴板（pywebview 提供 evaluate_js 但不直接给剪贴板，
+      // 这里没有就只能放弃；正常情况 execCommand 会成功）
+      alert('复制失败，请手动选中复制');
+      return;
+    }
+
+    const btn = document.getElementById('copyLogBtn');
+    const txt = document.getElementById('copyLogText');
+    const oldText = txt.textContent;
+    btn.classList.add('copied');
+    txt.textContent = '已复制';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      txt.textContent = oldText;
+    }, 1500);
   }
 </script>
 </body>
