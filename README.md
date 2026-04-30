@@ -21,7 +21,7 @@
 
 ### Windows 用户（推荐）
 
-1. 从 [Releases](../../releases/latest) 下载最新版本 `京东批量换图-Windows.zip`
+1. 从 [Releases](../../releases) 下载最新版本 `京准通批量换图-Windows.zip`
 2. 解压到任意文件夹（建议路径不含中文）
 3. 双击 `JD-BatchImageReplace.exe` 启动
 4. 首次启动约 10 秒，请耐心等待
