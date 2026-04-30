@@ -32,22 +32,13 @@ jobs:
         run: |
           playwright install chromium
 
-      - name: Get Chromium path
-        shell: pwsh
-        run: |
-          $path = python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path); p.stop()"
-          $chromiumDir = Split-Path $path -Parent
-          $playwrightRoot = Split-Path (Split-Path $chromiumDir -Parent) -Parent
-          echo "PW_BROWSERS_PATH=$playwrightRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "Found chromium at: $path"
-          echo "Browsers root: $playwrightRoot"
-
       - name: Build with PyInstaller
         shell: pwsh
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
         run: |
           pyinstaller --noconfirm --onedir --windowed `
             --name "JD-BatchImageReplace" `
-            --add-data "$env:PW_BROWSERS_PATH;ms-playwright" `
             --collect-all playwright `
             --collect-all webview `
             --hidden-import pandas `
@@ -56,6 +47,24 @@ jobs:
             --hidden-import src.core `
             --hidden-import src.gui `
             main.py
+
+      - name: Copy browsers to output
+        shell: pwsh
+        run: |
+          $src = python -c "import os, playwright; print(os.path.join(os.path.dirname(playwright.__file__), '.driver'))"
+          $dst = "dist/JD-BatchImageReplace/_internal/playwright/.driver"
+          if (Test-Path $src) {
+            Copy-Item -Path $src -Destination $dst -Recurse -Force
+            Write-Host "Copied .driver from $src to $dst"
+          }
+          $browserSrc = python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); path=p.chromium.executable_path; p.stop(); print(path)"
+          $browserDir = Split-Path $browserSrc -Parent
+          $browserRoot = Split-Path (Split-Path $browserDir -Parent) -Parent
+          $browserDst = "dist/JD-BatchImageReplace/_internal/ms-playwright"
+          if (Test-Path $browserRoot) {
+            Copy-Item -Path $browserRoot -Destination $browserDst -Recurse -Force
+            Write-Host "Copied browsers from $browserRoot to $browserDst"
+          }
 
       - name: Compress output
         shell: pwsh
