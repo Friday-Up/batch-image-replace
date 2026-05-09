@@ -31,3 +31,6 @@ error_*.png
 # IDE
 .vscode/
 .idea/
+
+# 内部文档（不提交到 GitHub）
+docs/
