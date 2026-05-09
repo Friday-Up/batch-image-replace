@@ -276,11 +276,18 @@ def run_batch_budget(excel_path: str, log_fn=print, wait_for_login_fn=None, stop
 
     browser, page = _ensure_browser(log_fn)
 
-    # SPA hash 路由导航 + reload 确保页面刷新
-    page.evaluate('window.location.hash = "#/list/tab/plan?objective=overview"')
-    wait(1)
-    page.reload(wait_until="domcontentloaded", timeout=60000)
-    _wait_for_table(page)
+    def _navigate_to_budget():
+        """导航到预算总览页，处理各种初始状态"""
+        page.goto(BUDGET_URL, wait_until="domcontentloaded", timeout=60000)
+        wait(2)
+        # goto 之后可能被 SPA hash 路由覆盖，强制再设一次
+        if "jzt.jd.com" in page.url and "#/list/tab/plan" not in page.url:
+            page.evaluate('window.location.hash = "#/list/tab/plan?objective=overview"')
+            wait(1)
+            page.reload(wait_until="domcontentloaded", timeout=60000)
+        _wait_for_table(page)
+
+    _navigate_to_budget()
 
     if "passport" in page.url or "login" in page.url:
         log_fn("⚠ 请在浏览器中手动登录京准通")
@@ -288,10 +295,7 @@ def run_batch_budget(excel_path: str, log_fn=print, wait_for_login_fn=None, stop
             wait_for_login_fn()
         else:
             input("登录成功后按回车继续 ...")
-        page.evaluate('window.location.hash = "#/list/tab/plan?objective=overview"')
-        wait(1)
-        page.reload(wait_until="domcontentloaded", timeout=60000)
-        _wait_for_table(page)
+        _navigate_to_budget()
 
     total = 0
     success = 0
