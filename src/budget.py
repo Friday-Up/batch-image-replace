@@ -124,23 +124,45 @@ def _wait_for_search_result(page, plan_name: str, timeout=10):
     return False
 
 
-def _verify_drawer_plan(page, plan_name: str) -> bool:
-    """校验抽屉标题是否包含目标计划名称"""
-    try:
-        title_text = page.evaluate('''() => {
-            const header = document.querySelector('.jad-modal-slide-header, .jzt-day-budget-modal-wrap .modal-title, .jad-modal-slide-main .title');
-            return header ? header.textContent : '';
-        }''')
-        if plan_name in (title_text or ''):
-            return True
-        # 兜底：检查抽屉内任意文本是否包含计划名
-        slide_text = page.evaluate('''() => {
-            const slide = document.querySelector('.jad-modal-slide-main');
-            return slide ? slide.textContent.substring(0, 500) : '';
-        }''')
-        return plan_name in (slide_text or '')
-    except Exception:
-        return False
+def _find_budget_entry_pos(page, plan_name: str):
+    """找到目标计划所在可见行的日预算入口坐标"""
+    safe_name = json.dumps(plan_name, ensure_ascii=False)
+    return page.evaluate(f'''() => {{
+        const name = {safe_name};
+        const rows = Array.from(document.querySelectorAll('tbody tr'));
+        for (const row of rows) {{
+            const rowRect = row.getBoundingClientRect();
+            const rowStyle = window.getComputedStyle(row);
+            if (rowRect.width === 0 || rowRect.height === 0) continue;
+            if (rowStyle.display === 'none' || rowStyle.visibility === 'hidden') continue;
+            if (!(row.textContent || '').includes(name)) continue;
+
+            const budgetSpan = row.querySelector('span.TestUIdaybuget');
+            if (!budgetSpan) continue;
+            budgetSpan.scrollIntoView({{block: 'center', inline: 'center'}});
+            const rect = budgetSpan.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+            return {{x: rect.x + rect.width / 2, y: rect.y + rect.height / 2}};
+        }}
+        return null;
+    }}''')
+
+
+def _open_budget_drawer(page, plan_name: str):
+    """打开目标计划的预算抽屉"""
+    last_pos = None
+    for _ in range(2):
+        pos = _find_budget_entry_pos(page, plan_name)
+        if not pos:
+            raise Exception(f"找不到计划「{plan_name}」对应的日预算入口")
+        last_pos = pos
+        page.mouse.click(pos['x'], pos['y'])
+        try:
+            page.wait_for_selector('.jad-modal-slide-main', state="visible", timeout=4000)
+            return
+        except PlaywrightTimeout:
+            wait(0.8)
+    raise Exception(f"预算设置抽屉未打开")
 
 
 def _close_budget_popover(page):
@@ -297,13 +319,8 @@ def run_batch_budget(excel_path: str, log_fn=print, wait_for_login_fn=None, stop
             if not _wait_for_search_result(page, plan_name):
                 raise Exception(f"搜索结果中未找到计划「{plan_name}」")
 
-            # 点击日预算打开抽屉
-            page.locator('span.TestUIdaybuget').first.click()
-            # 等抽屉出现
-            try:
-                page.wait_for_selector('.jad-modal-slide-main', state="visible", timeout=5000)
-            except PlaywrightTimeout:
-                raise Exception("预算设置抽屉未打开")
+            # 打开目标计划的预算抽屉（含 scrollIntoView + 重试）
+            _open_budget_drawer(page, plan_name)
 
             # 等日历内容渲染完成
             try:
@@ -311,29 +328,7 @@ def run_batch_budget(excel_path: str, log_fn=print, wait_for_login_fn=None, stop
             except PlaywrightTimeout:
                 raise Exception("日历内容未加载完成")
 
-            # 校验抽屉确实属于当前计划
-            if not _verify_drawer_plan(page, plan_name):
-                log_fn(f"  ⚠ 抽屉标题与计划名不匹配，关闭后重试 ...")
-                _close_drawer(page)
-                wait(1)
-                # 重新搜索一次
-                search_input = page.locator('input[placeholder*="请输入计划名称"]').first
-                search_input.click()
-                search_input.fill("")
-                search_input.fill(plan_name)
-                search_input.press("Enter")
-                if not _wait_for_search_result(page, plan_name):
-                    raise Exception(f"重试搜索后仍未找到计划「{plan_name}」")
-                page.locator('span.TestUIdaybuget').first.click()
-                try:
-                    page.wait_for_selector('.jad-modal-slide-main', state="visible", timeout=5000)
-                    page.wait_for_selector('td.day-cell .priceMod', state="visible", timeout=5000)
-                except PlaywrightTimeout:
-                    raise Exception("重试后抽屉未打开")
-                if not _verify_drawer_plan(page, plan_name):
-                    raise Exception(f"抽屉计划名不匹配，期望「{plan_name}」")
-
-            log_fn(f"  抽屉已打开（已校验计划名匹配）")
+            log_fn(f"  抽屉已打开")
 
             # 遍历该计划需要设置的每个日期
             for year, month, day, value in record["budgets"]:
