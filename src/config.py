@@ -46,6 +46,8 @@ def get_chromium_path():
     )
 
 
+BUDGET_URL = "https://jzt.jd.com/msa/#/list/tab/plan?objective=overview"
+
 SCENARIOS = {
     "keyword": {
         "label": "关键词",

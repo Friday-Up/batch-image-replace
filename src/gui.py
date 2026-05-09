@@ -20,6 +20,13 @@ HTML = """
   }
   h1 { font-size: 20px; font-weight: 600; margin-bottom: 20px; color: #1a1a1a; }
 
+  .tab-bar { display: flex; border-bottom: 1px solid #e8e8e8; margin-bottom: 20px; }
+  .tab-item { padding: 10px 20px; font-size: 15px; cursor: pointer; border-bottom: 2px solid transparent; color: #666; transition: all 0.2s; }
+  .tab-item.active { color: #e74c3c; border-bottom-color: #e74c3c; font-weight: 600; }
+  .tab-item:hover { color: #e74c3c; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
   .form-row { display: flex; align-items: center; margin-bottom: 14px; }
   .form-row label {
     width: 90px; font-size: 14px; color: #555; text-align: right;
@@ -98,45 +105,66 @@ HTML = """
 </head>
 <body>
 
-<h1>京准通 - 批量换图工具</h1>
-
-<div class="form-row">
-  <label>Excel 文件</label>
-  <input type="text" id="excelPath" readonly placeholder="点击右侧按钮选择文件">
-  <button class="btn" onclick="pickExcel()">选择文件</button>
+<div class="tab-bar">
+  <div class="tab-item active" onclick="switchTab('replace')">批量换图</div>
+  <div class="tab-item" onclick="switchTab('budget')">批量设置预算</div>
 </div>
 
-<div class="form-row">
-  <label>SKU 列名</label>
-  <input type="text" id="skuCol" value="SKU" style="max-width:150px;">
-  <span class="hint">Excel 中 SKU 所在列的列名</span>
-</div>
+<!-- 批量换图 Tab 内容 -->
+<div class="tab-content active" id="tab-replace">
+  <div class="form-row">
+    <label>Excel 文件</label>
+    <input type="text" id="excelPath" readonly placeholder="点击右侧按钮选择文件">
+    <button class="btn" onclick="pickExcel()">选择文件</button>
+  </div>
 
-<div class="form-row">
-  <label>图片文件夹</label>
-  <input type="text" id="imageDir" readonly placeholder="点击右侧按钮选择文件夹">
-  <button class="btn" onclick="pickImageDir()">选择文件夹</button>
-</div>
+  <div class="form-row">
+    <label>SKU 列名</label>
+    <input type="text" id="skuCol" value="SKU" style="max-width:150px;">
+    <span class="hint">Excel 中 SKU 所在列的列名</span>
+  </div>
 
-<div class="form-row">
-  <label>执行入口</label>
-  <div style="display:flex; gap:18px; align-items:center;">
-    <label style="width:auto; margin:0; font-size:13px; cursor:pointer;">
-      <input type="checkbox" id="scn-keyword" checked> 关键词
-    </label>
-    <label style="width:auto; margin:0; font-size:13px; cursor:pointer;">
-      <input type="checkbox" id="scn-crowd" checked> 人群
-    </label>
-    <label style="width:auto; margin:0; font-size:13px; cursor:pointer;">
-      <input type="checkbox" id="scn-smart" checked> 智能化
-    </label>
+  <div class="form-row">
+    <label>图片文件夹</label>
+    <input type="text" id="imageDir" readonly placeholder="点击右侧按钮选择文件夹">
+    <button class="btn" onclick="pickImageDir()">选择文件夹</button>
+  </div>
+
+  <div class="form-row">
+    <label>执行入口</label>
+    <div style="display:flex; gap:18px; align-items:center;">
+      <label style="width:auto; margin:0; font-size:13px; cursor:pointer;">
+        <input type="checkbox" id="scn-keyword" checked> 关键词
+      </label>
+      <label style="width:auto; margin:0; font-size:13px; cursor:pointer;">
+        <input type="checkbox" id="scn-crowd" checked> 人群
+      </label>
+      <label style="width:auto; margin:0; font-size:13px; cursor:pointer;">
+        <input type="checkbox" id="scn-smart" checked> 智能化
+      </label>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-primary" id="startBtn" onclick="startRun()">开始执行</button>
+    <button class="btn-danger" id="stopBtn" onclick="stopRun()" style="display:none;">停止执行</button>
+    <button class="btn-secondary" id="loginBtn" onclick="continueAfterLogin()" disabled>登录完成，继续执行</button>
   </div>
 </div>
 
-<div class="actions">
-  <button class="btn-primary" id="startBtn" onclick="startRun()">开始执行</button>
-  <button class="btn-danger" id="stopBtn" onclick="stopRun()" style="display:none;">停止执行</button>
-  <button class="btn-secondary" id="loginBtn" onclick="continueAfterLogin()" disabled>登录完成，继续执行</button>
+<!-- 批量设置预算 Tab 内容 -->
+<div class="tab-content" id="tab-budget">
+  <div class="form-row">
+    <label>Excel 文件</label>
+    <input type="text" id="budgetExcelPath" readonly placeholder="点击右侧按钮选择文件">
+    <button class="btn" onclick="pickBudgetExcel()">选择文件</button>
+  </div>
+
+  <div class="actions">
+    <button class="btn-primary" id="budgetStartBtn" onclick="startBudgetRun()">开始执行</button>
+    <button class="btn-danger" id="budgetStopBtn" onclick="stopBudgetRun()" style="display:none;">停止执行</button>
+    <button class="btn-secondary" id="budgetLoginBtn" onclick="continueAfterLoginBudget()" disabled>登录完成，继续执行</button>
+  </div>
 </div>
 
 <div class="log-label">
@@ -152,6 +180,24 @@ HTML = """
 <div id="log"></div>
 
 <script>
+  function switchTab(tab) {
+    // 切换 tab-item 样式
+    document.querySelectorAll('.tab-item').forEach(function(el) {
+      el.classList.remove('active');
+    });
+    // 切换 tab-content 显示
+    document.querySelectorAll('.tab-content').forEach(function(el) {
+      el.classList.remove('active');
+    });
+    if (tab === 'replace') {
+      document.querySelectorAll('.tab-item')[0].classList.add('active');
+      document.getElementById('tab-replace').classList.add('active');
+    } else if (tab === 'budget') {
+      document.querySelectorAll('.tab-item')[1].classList.add('active');
+      document.getElementById('tab-budget').classList.add('active');
+    }
+  }
+
   function appendLog(msg) {
     const el = document.getElementById('log');
     let cls = '';
@@ -202,6 +248,33 @@ HTML = """
     await pywebview.api.continue_after_login();
   }
 
+  async function pickBudgetExcel() {
+    const path = await pywebview.api.pick_budget_excel();
+    if (path) document.getElementById('budgetExcelPath').value = path;
+  }
+
+  async function startBudgetRun() {
+    const excel = document.getElementById('budgetExcelPath').value;
+    if (!excel) { alert('请选择 Excel 文件'); return; }
+    document.getElementById('budgetStartBtn').disabled = true;
+    document.getElementById('budgetStopBtn').style.display = 'inline-block';
+    document.getElementById('budgetStopBtn').disabled = false;
+    document.getElementById('log').innerHTML = '';
+    await pywebview.api.start_budget_run(excel);
+  }
+
+  async function stopBudgetRun() {
+    if (!confirm('确定要停止执行吗？当前处理完会立即中断。')) return;
+    document.getElementById('budgetStopBtn').disabled = true;
+    appendLog('⚠ 正在请求停止 ...');
+    await pywebview.api.stop_budget_run();
+  }
+
+  async function continueAfterLoginBudget() {
+    document.getElementById('budgetLoginBtn').disabled = true;
+    await pywebview.api.continue_after_login_budget();
+  }
+
   async function copyLog() {
     const logEl = document.getElementById('log');
     // 用 innerText 拿带换行的纯文本（不含 HTML 标签）
@@ -233,8 +306,6 @@ HTML = """
       }
     }
     if (!ok) {
-      // 终极兜底：交给 Python 写剪贴板（pywebview 提供 evaluate_js 但不直接给剪贴板，
-      // 这里没有就只能放弃；正常情况 execCommand 会成功）
       alert('复制失败，请手动选中复制');
       return;
     }
@@ -260,6 +331,8 @@ class Api:
         self._window_ref = window_ref
         self._login_event = threading.Event()
         self._stop_event = threading.Event()
+        self._budget_login_event = threading.Event()
+        self._budget_stop_event = threading.Event()
 
     def _reset_buttons(self):
         win = self._window_ref()
@@ -268,6 +341,9 @@ class Api:
                 'document.getElementById("startBtn").disabled = false;'
                 'document.getElementById("stopBtn").style.display = "none";'
                 'document.getElementById("stopBtn").disabled = false;'
+                'document.getElementById("budgetStartBtn").disabled = false;'
+                'document.getElementById("budgetStopBtn").style.display = "none";'
+                'document.getElementById("budgetStopBtn").disabled = false;'
             )
 
     def _log(self, msg):
@@ -293,6 +369,17 @@ class Api:
         if not win:
             return None
         result = win.create_file_dialog(webview.FOLDER_DIALOG)
+        return result[0] if result else None
+
+    def pick_budget_excel(self):
+        import webview
+        win = self._window_ref()
+        if not win:
+            return None
+        result = win.create_file_dialog(
+            webview.OPEN_DIALOG,
+            file_types=("Excel Files (*.xlsx;*.xls)", "All Files (*.*)")
+        )
         return result[0] if result else None
 
     def start_run(self, excel, sku_col, image_dir, scenarios):
@@ -326,14 +413,48 @@ class Api:
     def continue_after_login(self):
         self._login_event.set()
 
+    def start_budget_run(self, excel):
+        self._budget_stop_event.clear()
+
+        def _task():
+            try:
+                from .budget import run_batch_budget
+
+                def login_wait():
+                    self._log("⚠ 请在浏览器中手动登录，登录后点击「登录完成，继续执行」")
+                    win = self._window_ref()
+                    if win:
+                        win.evaluate_js('document.getElementById("budgetLoginBtn").disabled = false')
+                    self._budget_login_event.clear()
+                    self._budget_login_event.wait()
+
+                run_batch_budget(excel,
+                                 log_fn=self._log,
+                                 wait_for_login_fn=login_wait,
+                                 stop_event=self._budget_stop_event)
+            except Exception as e:
+                self._log(f"错误: {e}")
+            finally:
+                self._reset_buttons()
+
+        threading.Thread(target=_task, daemon=True).start()
+
+    def stop_budget_run(self):
+        self._budget_stop_event.set()
+        # 万一线程正卡在登录等待，也一并放行让它退出
+        self._budget_login_event.set()
+
+    def continue_after_login_budget(self):
+        self._budget_login_event.set()
+
 
 def run_gui():
     import webview
     window = None
     api = Api(lambda: window)
     window = webview.create_window(
-        "京准通 - 批量换图工具", html=HTML,
-        width=780, height=680, resizable=False,
+        "京准通 - 批量工具", html=HTML,
+        width=780, height=720, resizable=False,
         js_api=api
     )
     webview.start()

@@ -21,6 +21,7 @@ dist/
 # 用户数据（业务文件）
 *.xlsx
 *.xls
+!templates/*.xlsx
 燕京*/
 *主图/
 
