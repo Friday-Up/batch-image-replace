@@ -200,6 +200,7 @@ def _set_budget_for_date(page, year: int, month: int, day: int, value, log_fn=pr
             if (ds && ds.textContent.includes('{target_date_str}')) {{
                 const price = cell.querySelector('.priceMod');
                 if (price) {{
+                    price.scrollIntoView({{block: 'center', inline: 'center'}});
                     const rect = price.getBoundingClientRect();
                     return {{x: rect.x + rect.width/2, y: rect.y + rect.height/2}};
                 }}
