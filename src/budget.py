@@ -188,7 +188,9 @@ def _wait_popover_visible(page, timeout=3000) -> bool:
 
 
 def _set_budget_for_date(page, year: int, month: int, day: int, value, log_fn=print):
-    """在日历中点击指定日期格子，设置预算值"""
+    """在日历中点击指定日期格子，设置预算值。
+    返回: "ok" 成功, "skipped" 日期不在日历范围内
+    """
     target_date_str = f"{year}-{month:02d}-{day:02d}"
 
     _close_budget_popover(page)
@@ -210,7 +212,8 @@ def _set_budget_for_date(page, year: int, month: int, day: int, value, log_fn=pr
     }}''')
 
     if not pos:
-        raise Exception(f"找不到日期 {target_date_str} 的格子，可能超出日历可见范围")
+        log_fn(f"    跳过（日期不在日历可见范围内）")
+        return "skipped"
 
     page.mouse.click(pos['x'], pos['y'])
     if not _wait_popover_visible(page, 3000):
@@ -233,6 +236,7 @@ def _set_budget_for_date(page, year: int, month: int, day: int, value, log_fn=pr
         wait(0.3)
 
     _close_budget_popover(page)
+    return "ok"
 
 
 def _close_drawer(page):
@@ -336,17 +340,26 @@ def run_batch_budget(excel_path: str, log_fn=print, wait_for_login_fn=None, stop
             log_fn(f"  抽屉已打开")
 
             # 遍历该计划需要设置的每个日期
+            set_count = 0
+            skip_count = 0
             for year, month, day, value in record["budgets"]:
                 if _is_stopped():
                     stopped = True
                     break
                 val_display = "不限" if value == "不限" else str(value)
                 log_fn(f"  设置 {year}-{month:02d}-{day:02d} -> {val_display}")
-                _set_budget_for_date(page, year, month, day, value, log_fn)
+                result = _set_budget_for_date(page, year, month, day, value, log_fn)
+                if result == "skipped":
+                    skip_count += 1
+                else:
+                    set_count += 1
 
             if stopped:
                 _close_drawer(page)
                 break
+
+            if set_count == 0:
+                raise Exception(f"所有 {len(record['budgets'])} 个日期均不在日历范围内，无可设置的日期")
 
             # 保存：先关闭可能残留的日期弹窗
             _close_budget_popover(page)
@@ -370,8 +383,9 @@ def run_batch_budget(excel_path: str, log_fn=print, wait_for_login_fn=None, stop
                 raise Exception("找不到确定按钮")
 
             success += 1
-            df.at[idx, "备注"] = "设置成功"
-            log_fn(f"  ✓ 预算设置成功")
+            skip_msg = f"，跳过 {skip_count} 个过期日期" if skip_count else ""
+            df.at[idx, "备注"] = f"设置成功（{set_count} 个日期{skip_msg}）"
+            log_fn(f"  ✓ 预算设置成功（{set_count} 个日期{skip_msg}）")
 
         except (PlaywrightTimeout, Exception) as e:
             err_msg = str(e).split("\nCall log:")[0]

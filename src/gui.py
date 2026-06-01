@@ -92,10 +92,12 @@ HTML = """
   .copy-btn.copied { color: #4ec9b0; border-color: #4ec9b0; background: #f0faf7; }
 
   #log {
-    width: 100%; height: 220px; background: #1e1e1e; color: #d4d4d4;
+    width: 100%; height: 220px; min-height: 100px; max-height: 600px;
+    background: #1e1e1e; color: #d4d4d4;
     border-radius: 8px; padding: 12px; font-family: "Menlo", "Consolas", monospace;
     font-size: 12px; line-height: 1.6; overflow-y: auto; white-space: pre-wrap;
     word-break: break-all;
+    resize: vertical;
     -webkit-user-select: text; user-select: text; cursor: text;
   }
   #log .success { color: #4ec9b0; }
@@ -454,7 +456,7 @@ def run_gui():
     api = Api(lambda: window)
     window = webview.create_window(
         "京准通 - 批量工具", html=HTML,
-        width=780, height=720, resizable=False,
+        width=780, height=720, min_size=(780, 500),
         js_api=api
     )
     webview.start()
